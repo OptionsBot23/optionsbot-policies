@@ -49,6 +49,29 @@
   <li>+5% confidence bonus if the same ticker had prior UOA flow in the last 5 trading days</li>
 </ul>
 
+<h3>Implied volatility (IV vs HV)</h3>
+<p>IV is priced against 30-day realized volatility (HV30). Cheap premium gets a bonus; expensive premium gets penalized for vol-crush risk.</p>
+<ul>
+  <li><strong>Short-term signals:</strong>
+    <ul>
+      <li>IV/HV <code>&lt; 0.8x</code> (cheap): <code>+8%</code></li>
+      <li>IV/HV <code>0.8–1.3x</code> (fair): <code>0%</code></li>
+      <li>IV/HV <code>&gt; 1.3x</code> (expensive): <code>−8%</code></li>
+      <li>IV unavailable: <code>−5%</code></li>
+    </ul>
+  </li>
+  <li><strong>LEAPS:</strong> wider tolerance bands since there's more time for vol to normalize:
+    <ul>
+      <li>IV/HV <code>&lt; 1.0x</code> (cheap): <code>+6%</code></li>
+      <li>IV/HV <code>1.0–1.5x</code> (fair): <code>0%</code></li>
+      <li>IV/HV <code>&gt; 1.5x</code> (expensive): <code>−6%</code></li>
+      <li>IV unavailable: <code>−3%</code></li>
+    </ul>
+  </li>
+  <li><strong>Vega interaction:</strong> high vega (vega ÷ ask &gt; 0.15) combined with expensive IV (&gt; 1.3x HV) applies an additional <code>−5%</code> — vol-crush risk is amplified on high-vega contracts</li>
+  <li><strong>Exit advisor</strong> also receives the live IV/HV reading on every cycle and factors it into the hold / trim / exit decision (e.g., a position with IV collapsing into a fair range is a candidate for trimming)</li>
+</ul>
+
 <h3>LEAPS-specific rules</h3>
 <ul>
   <li>Ask must be <code>&lt; $15.00</code> per contract to trigger an alert</li>
@@ -111,6 +134,8 @@
   <li>Minimum option bid: <code>$0.10</code></li>
   <li>Maximum bid-ask spread: <code>30%</code> of mid-price</li>
 </ul>
+
+<p style="color:#555; font-size:0.95rem;"><em>Note: the day trader does not use implied volatility as an entry filter. Intraday 0DTE/1DTE setups are too short-dated for IV/HV ratios to be meaningful — the decision is driven by price action (EMA, VWAP, RSI), market tide, and gamma-exposure context instead.</em></p>
 
 <h3>Position sizing &amp; caps</h3>
 <ul>
