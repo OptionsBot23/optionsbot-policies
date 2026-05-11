@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OptionsBot — Trading Rules</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 820px; margin: 3rem auto; padding: 0 1.5rem; line-height: 1.55; color: #222; }
+  h1 { font-size: 1.7rem; margin-bottom: 0.25rem; }
+  h2 { font-size: 1.25rem; margin-top: 2.5rem; border-bottom: 1px solid #e1e4e8; padding-bottom: 0.3rem; }
+  h3 { font-size: 1.05rem; margin-top: 1.6rem; color: #444; }
+  a { color: #0366d6; }
+  .lede { color: #555; margin-top: 0; }
+  ul { padding-left: 1.4rem; }
+  li { margin-bottom: 0.35rem; }
+  code { background: #f6f8fa; padding: 0.1rem 0.35rem; border-radius: 3px; font-size: 0.9em; }
+  .meta { color: #777; font-size: 0.85rem; margin-top: 3rem; border-top: 1px solid #e1e4e8; padding-top: 1rem; }
+  .back { font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<p class="back"><a href="index.html">← OptionsBot</a></p>
+
+<h1>Trading Rules</h1>
+<p class="lede">The mechanical rules and risk limits governing OptionsBot's two trading agents.</p>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<h2>UOA Agent (Unusual Options Activity)</h2>
+<p>The UOA agent watches institutional options flow and opens swing-style positions when a signal passes both mechanical filters and Claude's qualitative scoring.</p>
+
+<h3>Signal source &amp; filters</h3>
+<ul>
+  <li>Source: Unusual Whales flow alerts, polled every 5 minutes during market hours (9:30–16:00 ET)</li>
+  <li>Minimum total premium: <code>$250,000</code></li>
+  <li>Fill price ≥ <code>70%</code> of the ask (paid-up flow only)</li>
+  <li>Volume must exceed open interest on the contract</li>
+  <li>DTE window: <code>7–730 days</code> (covers short-term and LEAPS)</li>
+  <li>Both calls and puts; both ITM and OTM accepted</li>
+</ul>
+
+<h3>Claude scoring</h3>
+<ul>
+  <li>Baseline 50%; trade threshold <code>≥74%</code></li>
+  <li>70–73% → "Considered" alert (no order)</li>
+  <li>Below 70% → pass</li>
+  <li>DTE &gt; 65 days routes the signal to the LEAPS evaluator instead</li>
+  <li>OTM penalty when underlying &gt; $20: 10–20% OTM = −3%, &gt;20% OTM = −5%</li>
+  <li>+5% confidence bonus if the same ticker had prior UOA flow in the last 5 trading days</li>
+</ul>
+
+<h3>LEAPS-specific rules</h3>
+<ul>
+  <li>Ask must be <code>&lt; $15.00</code> per contract to trigger an alert</li>
+  <li>+5% bonus if ask <code>&lt; $6.00</code></li>
+  <li>LEAPS signals flagged as "LEAP Considered" — alert only, no auto-order</li>
+</ul>
+
+<h3>Position sizing</h3>
+<ul>
+  <li>Default: 2 contracts per order (minimum)</li>
+  <li>Up to 4 contracts on standard premium</li>
+  <li>Up to 8 contracts when ask <code>≤ $2.00</code></li>
+  <li>Max premium per trade: <code>$2,000</code></li>
+  <li>One open position per ticker — duplicates rejected pre-order</li>
+</ul>
+
+<h3>Portfolio caps</h3>
+<ul>
+  <li>Max <code>20</code> concurrent UOA positions</li>
+  <li>Max <code>40%</code> of account equity allocated across all UOA positions</li>
+  <li>Max <code>5</code> new UOA trades opened per calendar day (a same-day close frees a slot)</li>
+  <li>Max absolute portfolio delta: <code>500</code></li>
+  <li>Max loss per trade: <code>8%</code> of account value</li>
+</ul>
+
+<h3>Exit management</h3>
+<ul>
+  <li>Hard stop-loss: position closes when down <code>50%</code> from entry cost</li>
+  <li>Same-day stop-loss is suppressed — minimum one-day hold before stops can fire</li>
+  <li>Exit advisor: Claude evaluates every open position each cycle and may recommend <code>exit</code>, <code>hold</code>, or <code>trim</code></li>
+  <li>Trim = sell half the contracts; the remainder stays monitored under the same rules</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<h2>Day Trader Agent</h2>
+<p>The day trader runs in parallel on a 60-second loop, taking 0DTE / 1DTE call and put positions on liquid index and high-volume tickers.</p>
+
+<h3>Universe</h3>
+<ul>
+  <li>Base tickers: <code>SPY, QQQ, IWM, NVDA, TSLA, AAPL</code></li>
+  <li>Plus the top-10 most-active US tickers, refreshed every 30 minutes</li>
+</ul>
+
+<h3>Entry signals (5-min candles)</h3>
+<ul>
+  <li><strong>ema_cross</strong> — fresh 9/21 EMA crossover, price on the correct side of VWAP, RSI between <code>25–75</code></li>
+  <li><strong>trend_pull</strong> — EMA9 already meaningfully above/below EMA21, price pulled back to EMA9 and bounced; RSI in the trend band: <code>45–80</code> for calls, <code>20–55</code> for puts</li>
+  <li>Every passing signal is then evaluated by Claude for setup quality — Claude can veto on hairline crosses, doji bars, lunch-lull chop, etc.</li>
+  <li>Market Tide gate: blocks any direction that opposes broad market-wide flow</li>
+</ul>
+
+<h3>Time gates (Eastern Time)</h3>
+<ul>
+  <li>Entry window: <code>09:35 – 14:00</code></li>
+  <li>Force-close all open day trades at: <code>15:45</code></li>
+</ul>
+
+<h3>Liquidity filters</h3>
+<ul>
+  <li>Minimum option bid: <code>$0.10</code></li>
+  <li>Maximum bid-ask spread: <code>30%</code> of mid-price</li>
+</ul>
+
+<h3>Position sizing &amp; caps</h3>
+<ul>
+  <li>Max spend per trade: <code>$1,000</code></li>
+  <li>Max <code>5</code> concurrent day trade positions</li>
+  <li>Max <code>20%</code> of account equity allocated across all open day trades</li>
+</ul>
+
+<h3>Exit management</h3>
+<ul>
+  <li>Hard stop-loss: <code>40%</code> drawdown (pre-trim only)</li>
+  <li>Trim half the position at <code>+75%</code> gain</li>
+  <li>After trim: runner rides until an EMA reversal or the 15:45 ET time-stop</li>
+  <li>1DTE runners: if trimmed Monday–Thursday, the remainder may hold overnight; closed by Friday or whenever it becomes 0DTE</li>
+</ul>
+
+<!-- ─────────────────────────────────────────────────────────────────────── -->
+<h2>System-wide safeguards</h2>
+<ul>
+  <li><code>PAPER_MODE</code> default — orders only route live when explicitly disabled</li>
+  <li><code>KILL_SWITCH</code> env flag halts all new orders immediately when set</li>
+  <li>Tradier sandbox handles paper routing; production endpoints supply market data (quotes, greeks, candles, chains) regardless of mode</li>
+  <li>All decisions, signals, and trades are persisted to SQLite for review</li>
+</ul>
+
+<p class="meta">These rules describe the current configuration. Parameters are tuned over time; the page may not reflect the very latest commit.</p>
+
+</body>
+</html>
