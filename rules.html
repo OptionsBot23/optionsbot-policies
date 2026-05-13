@@ -111,9 +111,14 @@
 
 <h3>Universe</h3>
 <ul>
-  <li>Base tickers: <code>SPY, QQQ, IWM, NVDA, TSLA, AAPL</code></li>
-  <li>Plus the top-10 most-active US tickers, refreshed every 30 minutes</li>
+  <li>Index ETFs: <code>SPY, QQQ, DIA, IWM</code></li>
+  <li>Sector / macro ETFs (chosen for low correlation with SPY/QQQ): <code>SMH</code> (semiconductors), <code>XLF</code> (financials), <code>XLE</code> (energy), <code>TLT</code> (20Y Treasuries), <code>GDX</code> (gold miners)</li>
+  <li>Single names with daily option chains: <code>NVDA, TSLA, AAPL</code></li>
+  <li>Plus the top-10 most-active US tickers, refreshed every 30 minutes (de-duplicated against the base list above)</li>
 </ul>
+
+<h3>Signal ranking</h3>
+<p>When more than one ticker fires a passing signal in the same cycle, every candidate is evaluated by Claude first, then sorted by Claude's confidence score. Position slots are filled top-down: highest-confidence setup goes first. If the position or allocation cap is reached, the remaining lower-confidence candidates are recorded as deferred rather than executed. This prevents an alphabetically-earlier weak signal from filling a slot that a later, stronger signal could have used.</p>
 
 <h3>Expiry selection</h3>
 <p>For each entry the bot tries expiries in priority order: 0DTE first, then 1DTE, then the nearest listed expiry capped at <strong>4DTE</strong>. The cap covers tickers like DIA, INTC, F, SOFI, IREN, QUBT that only list weekly Friday expirations — a Monday entry on such a ticker lands at 4DTE (that Friday), a Wednesday entry at 2DTE, and Thursday/Friday entries fall back to 0DTE only. The 4-day ceiling keeps the day trader on short-dated premium even when the chain has no daily expirations.</p>
