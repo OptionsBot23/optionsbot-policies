@@ -125,7 +125,7 @@
 
 <h3>Time gates (Eastern Time)</h3>
 <ul>
-  <li>Entry window: <code>09:35 – 14:00</code></li>
+  <li>Entry window: <code>09:45 – 14:30</code> (start was tightened from 09:35 to skip opening-bell chop)</li>
   <li>Force-close all open day trades at: <code>15:45</code></li>
 </ul>
 
@@ -142,14 +142,35 @@
   <li>Max spend per trade: <code>$1,000</code></li>
   <li>Max <code>5</code> concurrent day trade positions</li>
   <li>Max <code>20%</code> of account equity allocated across all open day trades</li>
+  <li><strong>Confidence-scaled sizing</strong> (Claude's confidence on the setup):
+    <ul>
+      <li><code>≥ 80%</code> → full size (up to $1,000)</li>
+      <li><code>70–79%</code> → half size (up to $500)</li>
+      <li><code>&lt; 70%</code> → trade skipped entirely (logged as <code>low-confidence</code>)</li>
+    </ul>
+  </li>
 </ul>
 
 <h3>Exit management</h3>
 <ul>
-  <li>Hard stop-loss: <code>40%</code> drawdown (pre-trim only)</li>
-  <li>Trim half the position at <code>+75%</code> gain</li>
+  <li>Hard stop-loss: <code>−40%</code> drawdown (pre-trim only)</li>
+  <li><strong>Breakeven stop</strong>: once an untrimmed position has been up <code>+25%</code>, a hard floor is armed at entry — if price subsequently round-trips back to entry, the position is sold flat. Prevents pop-and-fade winners from rolling all the way back to the −40% stop.</li>
+  <li><strong>Trim half</strong> at:
+    <ul>
+      <li><code>+50%</code> gain for 0DTE positions (tightened — same-day premium decays too fast to wait for +75%)</li>
+      <li><code>+75%</code> gain for 1+ DTE positions</li>
+    </ul>
+  </li>
   <li>After trim: runner rides until an EMA reversal or the 15:45 ET time-stop</li>
+  <li><strong>EMA reversal exit</strong>: requires the reversal candle's body (<code>|close − open|</code>) to be at least <code>30%</code> of the recent 14-bar ATR — filters out exits triggered by tiny indecision bars</li>
   <li>1DTE runners: if trimmed Monday–Thursday, the remainder may hold overnight; closed by Friday or whenever it becomes 0DTE</li>
+</ul>
+
+<h3>Order execution &amp; P&amp;L accounting</h3>
+<ul>
+  <li>Buys: limit orders at mid + <code>$0.05</code>; runner waits up to <code>15s</code> for Tradier to confirm a fill. If no fill confirms in time, the position is <em>not</em> recorded — a manual-reconcile alert is sent.</li>
+  <li>Sells (trim and close): market orders; runner waits up to <code>10s</code> for the avg_fill_price.</li>
+  <li>All recorded entry / exit prices and realized P&amp;L are based on Tradier's reported <code>avg_fill_price</code>, not the bot's pre-order mid-quote estimate. Decisions to stop / trim / close are still driven by the live mid (no fill exists yet at that moment), but everything persisted to the database reflects actual fills.</li>
 </ul>
 
 <!-- ─────────────────────────────────────────────────────────────────────── -->
