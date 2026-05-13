@@ -107,13 +107,16 @@
 
 <!-- ─────────────────────────────────────────────────────────────────────── -->
 <h2>Day Trader Agent</h2>
-<p>The day trader runs in parallel on a 60-second loop, taking 0DTE / 1DTE call and put positions on liquid index and high-volume tickers.</p>
+<p>The day trader runs in parallel on a 60-second loop, taking short-dated call and put positions on liquid index and high-volume tickers.</p>
 
 <h3>Universe</h3>
 <ul>
   <li>Base tickers: <code>SPY, QQQ, IWM, NVDA, TSLA, AAPL</code></li>
   <li>Plus the top-10 most-active US tickers, refreshed every 30 minutes</li>
 </ul>
+
+<h3>Expiry selection</h3>
+<p>For each entry the bot tries expiries in priority order: 0DTE first, then 1DTE, then the nearest listed expiry capped at <strong>4DTE</strong>. The cap covers tickers like DIA, INTC, F, SOFI, IREN, QUBT that only list weekly Friday expirations — a Monday entry on such a ticker lands at 4DTE (that Friday), a Wednesday entry at 2DTE, and Thursday/Friday entries fall back to 0DTE only. The 4-day ceiling keeps the day trader on short-dated premium even when the chain has no daily expirations.</p>
 
 <h3>Entry signals (5-min candles)</h3>
 <ul>
