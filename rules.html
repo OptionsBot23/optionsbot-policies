@@ -147,15 +147,29 @@
 
 <h3>Position sizing &amp; caps</h3>
 <ul>
-  <li>Max spend per trade: <code>$1,000</code></li>
+  <li>Max spend per trade: <code>$1,000</code> (this is a ceiling, not a target — see even-lot rule below)</li>
   <li>Max <code>5</code> concurrent day trade positions</li>
   <li>Max <code>20%</code> of account equity allocated across all open day trades</li>
   <li><strong>Confidence-scaled sizing</strong> (Claude's confidence on the setup):
     <ul>
-      <li><code>≥ 80%</code> → full size (up to $1,000)</li>
-      <li><code>70–79%</code> → half size (up to $500)</li>
+      <li><code>≥ 80%</code> → full size, budget = <code>$1,000</code></li>
+      <li><code>70–79%</code> → half size, budget = <code>$500</code></li>
       <li><code>&lt; 70%</code> → trade skipped entirely (logged as <code>low-confidence</code>)</li>
     </ul>
+  </li>
+  <li><strong>Even-lot rounding</strong> — contract count must be even so the trim can sell half. The bot computes:
+    <ul>
+      <li><code>max_contracts = floor(budget ÷ (ask × 100))</code></li>
+      <li><code>contracts     = max_contracts rounded DOWN to the nearest even number</code></li>
+    </ul>
+    Actual notional = <code>contracts × ask × 100</code>, which is typically well under the budget. Examples at full size ($1,000 budget):
+    <ul>
+      <li>ask <code>$4.50</code> → 2 contracts → <code>$900</code></li>
+      <li>ask <code>$3.80</code> → 2 contracts → <code>$760</code></li>
+      <li>ask <code>$2.60</code> → floor=3, rounds down to 2 → <code>$520</code></li>
+      <li>ask <code>$2.10</code> → 4 contracts → <code>$840</code></li>
+    </ul>
+    At half size the floor bites harder: a $500 budget at ask <code>$3.20</code> rounds down to 0 even contracts and the trade is skipped (<code>too expensive for 2 contracts</code> log line).
   </li>
 </ul>
 
