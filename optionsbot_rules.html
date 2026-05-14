@@ -32,11 +32,13 @@
 <h3>Signal source &amp; filters</h3>
 <ul>
   <li>Source: Unusual Whales flow alerts, polled every 5 minutes during market hours (9:30–16:00 ET)</li>
-  <li>Minimum total premium: <code>$250,000</code></li>
+  <li>Minimum total premium: <code>$400,000</code></li>
   <li>Fill price ≥ <code>70%</code> of the ask (paid-up flow only)</li>
   <li>Volume must exceed open interest on the contract</li>
   <li>DTE window: <code>7–730 days</code> (covers short-term and LEAPS)</li>
   <li>Both calls and puts; both ITM and OTM accepted</li>
+  <li><strong>Excluded tickers</strong> — broad-market and sector ETFs are filtered out (SPY, QQQ, IWM, DIA, VOO, VTI, IVV, EFA, EEM, sector XL* funds, vol products like VXX/UVXY, leveraged 3x funds like TQQQ/SQQQ/SPXU/UPRO, plus GLD/SLV/TLT/HYG/LQD/GDX). Their flow is dominated by hedging activity rather than directional conviction. Single-name stocks only.</li>
+  <li><strong>Opening buffer</strong>: no new UOA buys before <code>09:45 ET</code> — skips the opening 15 minutes of overnight-gap chop and rebalancing flow. Exits and stop-losses are <em>not</em> gated.</li>
 </ul>
 
 <h3>Claude scoring</h3>
@@ -105,6 +107,12 @@
   <li>Trim = sell half the contracts; the remainder stays monitored under the same rules</li>
 </ul>
 
+<h3>Alerts</h3>
+<ul>
+  <li>SMS alerts fire on every BUY, LEAP Considered, and Considered (just-below-threshold or at-cap) decision</li>
+  <li><strong>⭐ prefix</strong> — when the underlying UOA signal carries <code>≥ $1,000,000</code> in total premium, the SMS body is prefixed with a star emoji so big-money flow stands out at a glance in the message thread</li>
+</ul>
+
 <!-- ─────────────────────────────────────────────────────────────────────── -->
 <h2>Day Trader Agent</h2>
 <p>The day trader runs in parallel on a 60-second loop, taking short-dated call and put positions on liquid index and high-volume tickers.</p>
@@ -129,6 +137,7 @@
   <li><strong>trend_pull</strong> — EMA9 already meaningfully above/below EMA21, price pulled back to EMA9 and bounced; RSI in the trend band: <code>45–80</code> for calls, <code>20–55</code> for puts</li>
   <li>Every passing signal is then evaluated by Claude for setup quality — Claude can veto on hairline crosses, doji bars, lunch-lull chop, etc.</li>
   <li>Market Tide gate: blocks any direction that opposes broad market-wide flow</li>
+  <li><strong>Loss cooldown</strong>: after any losing close <em>or losing trim</em>, the exact same contract (ticker + strike + option_type + expiry) is blocked from re-entry for <code>30 minutes</code>. Stops revenge / repeat entries on the same setup that just failed.</li>
 </ul>
 
 <h3>Time gates (Eastern Time)</h3>
@@ -176,7 +185,12 @@
 <h3>Exit management</h3>
 <ul>
   <li>Hard stop-loss: <code>−40%</code> drawdown (pre-trim only)</li>
-  <li><strong>Breakeven stop</strong>: once an untrimmed position has been up <code>+25%</code>, a hard floor is armed at entry — if price subsequently round-trips back to entry, the position is sold flat. Prevents pop-and-fade winners from rolling all the way back to the −40% stop.</li>
+  <li><strong>Breakeven stop</strong>: once an untrimmed position has been up by the arm threshold, a hard floor is armed at entry — if price subsequently round-trips back to entry, the position is sold flat. Prevents pop-and-fade winners from rolling all the way back to the −40% stop. The threshold differs by ticker class:
+    <ul>
+      <li><strong>Index ETFs</strong> (<code>SPY, QQQ, DIA, IWM</code>): arm at <code>+25%</code></li>
+      <li><strong>Single-name stocks</strong> (everything else, e.g. NVDA, AAPL, INTC): arm at <code>+15%</code> — single names move faster than index ETFs and frequently peak below 25% before reversing, so the floor is locked in earlier</li>
+    </ul>
+  </li>
   <li><strong>Trim half</strong> at:
     <ul>
       <li><code>+50%</code> gain for 0DTE positions (tightened — same-day premium decays too fast to wait for +75%)</li>
@@ -190,8 +204,23 @@
 
 <h3>Order execution &amp; P&amp;L accounting</h3>
 <ul>
-  <li>Buys: limit orders at mid + <code>$0.05</code>; runner waits up to <code>15s</code> for Tradier to confirm a fill. If no fill confirms in time, the position is <em>not</em> recorded — a manual-reconcile alert is sent.</li>
-  <li>Sells (trim and close): market orders; runner waits up to <code>10s</code> for the avg_fill_price.</li>
+  <li><strong>Buys — three-step escalation</strong> (each limit attempt has a <code>5s</code> fill window before cancel + escalate):
+    <ol>
+      <li>Passive limit at mid + <code>$0.05</code></li>
+      <li>Marketable limit at the displayed ask</li>
+      <li>Market order (guarantees a fill)</li>
+    </ol>
+  </li>
+  <li><strong>Exits / stop-loss / time-stop sells — three-step escalation</strong> (each limit attempt has a <code>3s</code> window):
+    <ol>
+      <li>Limit at the current bid</li>
+      <li>Re-quote at the new bid and re-place</li>
+      <li>Market order (guarantees the close-out)</li>
+    </ol>
+  </li>
+  <li><strong>Trim sells</strong>: single-shot limit at the current bid with the same 3s window. If unfilled, the order is canceled and the position stays at full size — normal trim/exit triggers continue to apply and the next cycle will retry. No market fallback on trims (a half-fill at a bad print isn't worth chasing).</li>
+  <li><strong>Pending-buy reconciliation</strong>: if every escalation attempt — including the market fallback — fails to confirm a fill within its window, the buy is persisted to the database with status <code>pending</code> and an SMS alert fires. Each subsequent cycle the runner queries Tradier for the order; once the broker reports <code>filled</code> with a fill price, the row is promoted to <code>open</code> at the real fill price and monitoring takes over.</li>
+  <li><code>await_sell_fill</code> tolerates transient Tradier API errors (HTTP timeouts, 5xx) — it keeps polling until the timeout expires or it hits 5 consecutive errors. It also accepts <code>last_fill_price</code> as a fallback once <code>remaining_quantity</code> drops to 0, since Tradier's status endpoint sometimes lags propagation of <code>avg_fill_price</code> by several seconds.</li>
   <li>All recorded entry / exit prices and realized P&amp;L are based on Tradier's reported <code>avg_fill_price</code>, not the bot's pre-order mid-quote estimate. Decisions to stop / trim / close are still driven by the live mid (no fill exists yet at that moment), but everything persisted to the database reflects actual fills.</li>
 </ul>
 
@@ -200,6 +229,7 @@
 <ul>
   <li><code>PAPER_MODE</code> default — orders only route live when explicitly disabled</li>
   <li><code>KILL_SWITCH</code> env flag halts all new orders immediately when set</li>
+  <li><code>UOA_TRADING_ENABLED</code> env flag — when set to <code>0</code>, the UOA agent still polls, evaluates with Claude, and sends SMS alerts on trade-grade recommendations, but does <em>not</em> place buy orders or write a trade row. Sells (stop-loss, exit advisor, contrary-signal exits) still run so existing positions remain managed. Set to <code>1</code> to resume normal UOA execution. The day trader has its own independent execution path and is unaffected.</li>
   <li>Tradier sandbox handles paper routing; production endpoints supply market data (quotes, greeks, candles, chains) regardless of mode</li>
   <li>All decisions, signals, and trades are persisted to SQLite for review</li>
 </ul>
